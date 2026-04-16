@@ -13,6 +13,9 @@ from app.services.core_fuzzy_match import core_fuzzy_similarity
 from app.services.semantic_match import semantic_similarity
 from app.services.fuzzy_match import fuzzy_similarity
 
+# Data
+from app.data.existing_titles import EXISTING_TITLES_LIST
+
 router = APIRouter()
 
 
@@ -27,10 +30,24 @@ def health_check():
 @router.post("/verify-title", response_model=TitleVerificationResponse)
 def verify_title(payload: TitleRequest):
 
-    # 0️⃣ Normalize
-    normalized = normalize_title(payload.title)
+    # 🚨 STEP 0: Check if data loaded
+    if len(EXISTING_TITLES_LIST) == 0:
+        return {
+            "submitted_title": payload.title,
+            "normalized_title": "",
+            "status": "Initializing",
+            "verification_probability": 0.0,
+            "similarity_percentage": 0.0,
+            "closest_match": None,
+            "rejection_reasons": [
+                "System is loading data, please try again in a few seconds"
+            ]
+        }
 
-    # 1️⃣ Disallowed words (HARD RULE)
+    # 0️⃣ Normalize
+    normalized = normalize_title(payload.title) or ""
+
+    # 1️⃣ Disallowed words
     has_bad_word, bad_words = contains_disallowed_word(normalized)
     if has_bad_word:
         return {
@@ -45,7 +62,7 @@ def verify_title(payload: TitleRequest):
             ]
         }
 
-    # 2️⃣ Periodicity rule (HARD RULE)
+    # 2️⃣ Periodicity rule
     violates, periodic_words = violates_periodicity_rule(normalized)
     if violates:
         return {
@@ -89,7 +106,7 @@ def verify_title(payload: TitleRequest):
             ]
         }
 
-    # 5️⃣ Core (prefix/suffix neutral) similarity
+    # 5️⃣ Core fuzzy similarity
     is_core_similar, core_closest, core_score = core_fuzzy_similarity(normalized)
     if is_core_similar:
         return {
@@ -97,30 +114,14 @@ def verify_title(payload: TitleRequest):
             "normalized_title": normalized,
             "status": "Rejected",
             "verification_probability": round(100 - core_score, 2),
-            "similarity_percentage": core_score,
+            "similarity_percentage": round(core_score, 2),
             "closest_match": core_closest.title() if core_closest else None,
             "rejection_reasons": [
                 "Too similar after removing common prefixes/suffixes"
             ]
         }
 
-    # 6️⃣ Semantic similarity (AI – same meaning)
-    is_semantic_similar, semantic_closest, semantic_score = semantic_similarity(normalized)
-    if is_semantic_similar:
-        return {
-            "submitted_title": payload.title,
-            "normalized_title": normalized,
-            "status": "Rejected",
-            "verification_probability": round(100 - semantic_score, 2),
-            "similarity_percentage": semantic_score,
-            "closest_match": semantic_closest.title() if semantic_closest else None,
-            "rejection_reasons": [
-                "Title has same meaning as an existing title",
-                f"Semantic similarity score {semantic_score}% exceeds allowed threshold"
-            ]
-        }
-
-    # 7️⃣ Fuzzy similarity (Risk bands)
+    # 6️⃣ Fuzzy similarity (IMPORTANT: BEFORE semantic)
     is_similar, closest, score = fuzzy_similarity(normalized)
 
     if score >= 80:
@@ -130,6 +131,25 @@ def verify_title(payload: TitleRequest):
     else:
         status = "Pending"
 
+    # 7️⃣ Semantic similarity (ONLY if needed)
+    if score < 60:
+        is_semantic_similar, semantic_closest, semantic_score = semantic_similarity(normalized)
+
+        if is_semantic_similar:
+            return {
+                "submitted_title": payload.title,
+                "normalized_title": normalized,
+                "status": "Rejected",
+                "verification_probability": round(100 - semantic_score, 2),
+                "similarity_percentage": round(semantic_score, 2),
+                "closest_match": semantic_closest.title() if semantic_closest else None,
+                "rejection_reasons": [
+                    "Title has same meaning as an existing title",
+                    f"Semantic similarity score {round(semantic_score, 2)}% exceeds threshold"
+                ]
+            }
+
+    # 8️⃣ Return fuzzy result if risky/rejected
     if status in ("Rejected", "Risky"):
         return {
             "submitted_title": payload.title,
@@ -140,15 +160,15 @@ def verify_title(payload: TitleRequest):
             "closest_match": closest.title() if closest else None,
             "rejection_reasons": [
                 "Title is highly similar to an existing title",
-                f"Similarity score {round(score, 2)}% exceeds allowed threshold"
+                f"Similarity score {round(score, 2)}% exceeds threshold"
             ]
         }
 
-    # 8️⃣ Final approval (Pending)
+    # 9️⃣ Final result
     return {
         "submitted_title": payload.title,
         "normalized_title": normalized,
-        "status": "Pending",
+        "status": "Approved",
         "verification_probability": 100.0,
         "similarity_percentage": 0.0,
         "closest_match": None,

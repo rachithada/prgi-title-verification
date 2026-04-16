@@ -1,16 +1,32 @@
 from rapidfuzz import fuzz
 from app.data.existing_titles import EXISTING_TITLES
 
+
+def word_overlap(a, b):
+    set1 = set(a.split())
+    set2 = set(b.split())
+    return len(set1 & set2)
+
+
 def fuzzy_similarity(normalized_title: str, threshold: int = 70):
-    """
-    Returns:
-    (is_similar, closest_match, similarity_score)
-    """
+
+    if not normalized_title or len(normalized_title.split()) < 2:
+        return False, None, 0.0
 
     best_score = 0
     closest_match = None
 
     for existing in EXISTING_TITLES:
+
+        if not existing or len(existing.split()) < 2:
+            continue
+
+        # 🔥 NEW: word overlap check
+        overlap = word_overlap(normalized_title, existing)
+
+        if overlap == 0:
+            continue  # ❌ skip unrelated titles
+
         score_1 = fuzz.ratio(normalized_title, existing)
         score_2 = fuzz.partial_ratio(normalized_title, existing)
         score_3 = fuzz.token_sort_ratio(normalized_title, existing)

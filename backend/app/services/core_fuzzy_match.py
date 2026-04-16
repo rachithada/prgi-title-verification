@@ -1,6 +1,10 @@
 from rapidfuzz import fuzz
-from app.data.existing_titles import EXISTING_CORE_TITLES, EXISTING_TITLES
+from app.data.existing_titles import (
+    EXISTING_CORE_TITLES_LIST,
+    EXISTING_TITLES_LIST
+)
 from app.utils.core_title import extract_core_title
+
 
 def core_fuzzy_similarity(normalized_title: str, threshold: int = 70):
     input_core = extract_core_title(normalized_title)
@@ -8,7 +12,8 @@ def core_fuzzy_similarity(normalized_title: str, threshold: int = 70):
     best_score = 0
     closest_match = None
 
-    for idx, existing_core in enumerate(EXISTING_CORE_TITLES):
+    # ✅ iterate over LIST (correct order)
+    for idx, existing_core in enumerate(EXISTING_CORE_TITLES_LIST):
         if not existing_core or not input_core:
             continue
 
@@ -16,6 +21,7 @@ def core_fuzzy_similarity(normalized_title: str, threshold: int = 70):
 
         if score > best_score:
             best_score = score
-            closest_match = EXISTING_TITLES[idx]
+            closest_match = EXISTING_TITLES_LIST[idx]
 
     return best_score >= threshold, closest_match, float(best_score)
+

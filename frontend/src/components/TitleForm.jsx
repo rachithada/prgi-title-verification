@@ -1,5 +1,5 @@
 import { useState } from "react";
-import "./Titleform.css"
+import "./ResultCard.css";
 
 function TitleForm({ onResult }) {
   const [title, setTitle] = useState("");
@@ -13,21 +13,42 @@ function TitleForm({ onResult }) {
     setLoading(true);
 
     try {
-      const response = await fetch("http://127.0.0.1:8001/api/verify-title", {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 30000); // ⏱ 30s timeout
+
+      const response = await fetch("http://localhost:8000/api/verify-title", {
         method: "POST",
         headers: {
-          "Content-Type": "application/json"
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify({ title })
+        body: JSON.stringify({ title }),
+        signal: controller.signal,
       });
 
+      clearTimeout(timeout);
+
+      // 🚨 Check if API failed
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+
       const data = await response.json();
+
+      console.log("✅ API Response:", data); // 🔥 Debug
+
       onResult(data);
+
     } catch (error) {
-      console.error("API Error:", error);
-      onResult({ error: "Backend not reachable" });
+      console.error("❌ API Error:", error);
+
+      if (error.name === "AbortError") {
+        onResult({ error: "Request timed out (server too slow)" });
+      } else {
+        onResult({ error: "Backend error or not reachable" });
+      }
+
     } finally {
-      setLoading(false);
+      setLoading(false); // ✅ ALWAYS stops loading
     }
   };
 
